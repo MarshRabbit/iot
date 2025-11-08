@@ -1,0 +1,4 @@
+flask==3.0.0
+smbus2==0.4.2
+requests==2.31.0
+Adafruit-GPIO==1.0.3

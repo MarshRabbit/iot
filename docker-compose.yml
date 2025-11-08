@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  iot-central-server:
+    build: .
+    container_name: iot_central_server
+    restart: unless-stopped
+    
+    # 특권 모드 (I2C 센서 접근을 위해 필요)
+    privileged: true
+    
+    # I2C 장치 접근
+    devices:
+      - "/dev/i2c-1:/dev/i2c-1"
+    
+    network_mode: host
+    
+    volumes:
+      # 데이터베이스 영구 저장
+      - ./data:/app/data
+      
+    
+    environment:
+      # Flask 설정
+      - FLASK_ENV=production
+      - PYTHONUNBUFFERED=1
+      
+      # 임계값 설정
+      - TEMP_HIGH=25.0
+      - TEMP_LOW=18.0
+      - HUMIDITY_HIGH=70.0
+      - CO2_HIGH=1000.0
+      - NOISE_HIGH=70.0
+      - MOTION_TIMEOUT=300
+      
+      # 액추에이터 엔드포인트
+      - AC_ENDPOINT=http://192.168.0.101:5001/control
+      - HEATER_ENDPOINT=http://192.168.0.102:5001/control
+      - VENT_ENDPOINT=http://192.168.0.103:5001/control
+      - LIGHT_ENDPOINT=http://192.168.0.104:5001/control
+      - ALARM_ENDPOINT=http://192.168.0.105:5001/control
+    
+    # 헬스체크
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    env_file:
+      - .env
