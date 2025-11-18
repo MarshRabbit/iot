@@ -1,0 +1,242 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    padding: 20px;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+/* 헤더 */
+header {
+    background: white;
+    padding: 30px;
+    border-radius: 15px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    margin-bottom: 30px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+header h1 {
+    color: #333;
+    font-size: 2em;
+}
+
+.status {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #666;
+}
+
+.status-indicator {
+    font-size: 1.5em;
+    color: #4CAF50;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+/* 센서/액추에이터 그리드 */
+.sensor-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 25px;
+    margin-bottom: 30px;
+}
+
+/* 센서 카드 */
+.sensor-card {
+    background: white;
+    padding: 35px;
+    border-radius: 20px;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+    text-align: center;
+    transition: transform 0.3s, box-shadow 0.3s;
+}
+
+.sensor-card:hover {
+    transform: translateY(-8px);
+    box-shadow: 0 15px 35px rgba(0,0,0,0.25);
+}
+
+.sensor-card.alert {
+    border: 4px solid #ff4444;
+    background: #fff5f5;
+    animation: alertBlink 1s infinite;
+}
+
+@keyframes alertBlink {
+    0%, 100% { border-color: #ff4444; }
+    50% { border-color: #ff8888; }
+}
+
+.sensor-icon {
+    font-size: 4em;
+    margin-bottom: 15px;
+}
+
+.sensor-card h3 {
+    color: #666;
+    font-size: 1.2em;
+    margin-bottom: 20px;
+    font-weight: 600;
+}
+
+.sensor-value {
+    font-size: 3.5em;
+    font-weight: bold;
+    color: #333;
+    margin-bottom: 10px;
+    line-height: 1;
+}
+
+.sensor-unit {
+    color: #999;
+    font-size: 1.3em;
+}
+
+/* 액추에이터 카드 */
+.actuator-card {
+    background: white;
+    padding: 35px;
+    border-radius: 20px;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+    text-align: center;
+    transition: transform 0.3s, box-shadow 0.3s;
+}
+
+.actuator-card:hover {
+    transform: translateY(-8px);
+    box-shadow: 0 15px 35px rgba(0,0,0,0.25);
+}
+
+.actuator-card.on {
+    background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+    color: white;
+}
+
+.actuator-card.on .actuator-icon {
+    animation: bounce 0.5s;
+}
+
+@keyframes bounce {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.2); }
+}
+
+.actuator-icon {
+    font-size: 4em;
+    margin-bottom: 15px;
+}
+
+.actuator-card h3 {
+    color: #666;
+    font-size: 1.2em;
+    margin-bottom: 20px;
+    font-weight: 600;
+}
+
+.actuator-card.on h3 {
+    color: white;
+}
+
+.actuator-status {
+    font-size: 2.5em;
+    font-weight: bold;
+    padding: 15px 30px;
+    border-radius: 15px;
+    display: inline-block;
+}
+
+.actuator-card:not(.on) .actuator-status {
+    background: #e0e0e0;
+    color: #999;
+}
+
+.actuator-card.on .actuator-status {
+    background: rgba(255,255,255,0.3);
+    color: white;
+}
+
+/* 졸음 감지 특수 스타일 */
+#drowsy-card.drowsy {
+    border: 4px solid #ff9800;
+    background: #fff9f0;
+    animation: drowsyAlert 2s infinite;
+}
+
+@keyframes drowsyAlert {
+    0%, 100% { 
+        border-color: #ff9800;
+        transform: scale(1);
+    }
+    50% { 
+        border-color: #ffb74d;
+        transform: scale(1.02);
+    }
+}
+
+#drowsy-status {
+    font-size: 2em;
+}
+
+#drowsy-time {
+    margin-top: 10px;
+    font-size: 1em;
+}
+
+/* 반응형 디자인 */
+@media (max-width: 768px) {
+    .sensor-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 15px;
+    }
+    
+    header {
+        flex-direction: column;
+        text-align: center;
+        gap: 15px;
+    }
+    
+    header h1 {
+        font-size: 1.5em;
+    }
+    
+    .sensor-card, .actuator-card {
+        padding: 25px;
+    }
+    
+    .sensor-icon, .actuator-icon {
+        font-size: 3em;
+    }
+    
+    .sensor-value {
+        font-size: 2.5em;
+    }
+    
+    .actuator-status {
+        font-size: 2em;
+        padding: 10px 20px;
+    }
+}
+
+@media (max-width: 480px) {
+    .sensor-grid {
+        grid-template-columns: 1fr;
+    }
+}

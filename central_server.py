@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template, send_from_directory
 import sqlite3
 import requests
 from datetime import datetime
@@ -458,51 +458,6 @@ def decision_making_loop():
         
         time.sleep(5)
 
-@app.route('/', methods=['GET'])
-def home():
-    return jsonify({
-        'service': 'IoT Central Server',
-        'status': 'running',
-        'sensor_available': SENSOR_AVAILABLE,
-        'version': '1.0.0'
-    }), 200
-
-@app.route('/status', methods=['GET'])
-def get_status():
-    return jsonify({
-        'sensor_data': latest_sensor_data,
-        'thresholds': THRESHOLDS,
-        'actuator_endpoints': ACTUATOR_ENDPOINTS,
-        'timestamp': datetime.now().isoformat()
-    }), 200
-
-@app.route('/dashboard', methods=['GET'])
-def dashboard():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    
-    c.execute('SELECT * FROM sensor_data ORDER BY timestamp DESC LIMIT 100')
-    sensor_data = c.fetchall()
-    
-    c.execute('SELECT * FROM motion_log ORDER BY timestamp DESC LIMIT 50')
-    motion_logs = c.fetchall()
-    
-    c.execute('SELECT * FROM noise_log ORDER BY timestamp DESC LIMIT 50')
-    noise_logs = c.fetchall()
-    
-    c.execute('SELECT * FROM control_log ORDER BY timestamp DESC LIMIT 50')
-    control_logs = c.fetchall()
-    
-    conn.close()
-    
-    return jsonify({
-        'sensor_data': sensor_data,
-        'motion_logs': motion_logs,
-        'noise_logs': noise_logs,
-        'control_logs': control_logs,
-        'current_status': latest_sensor_data
-    }), 200
-
 @app.route('/thresholds', methods=['GET', 'POST'])
 def manage_thresholds():
     if request.method == 'GET':
@@ -543,6 +498,42 @@ def get_logs(log_type):
     conn.close()
     
     return jsonify({'logs': logs}), 200
+
+@app.route('/')
+def home():
+    """메인 페이지 - 대시보드"""
+    return render_template('dashboard.html')
+
+@app.route('/dashboard')
+def dashboard_page():
+    """대시보드 페이지"""
+    return render_template('dashboard.html')
+
+@app.route('/static/<path:path>')
+def send_static(path):
+    """정적 파일 제공"""
+    return send_from_directory('static', path)
+
+
+@app.route('/status', methods=['GET'])
+def get_status():
+    """현재 상태 API"""
+    return jsonify({
+        'sensor_data': latest_sensor_data,
+        'thresholds': THRESHOLDS,
+        'actuator_endpoints': ACTUATOR_ENDPOINTS,
+        'timestamp': datetime.now().isoformat()
+    }), 200
+
+@app.route('/api/info', methods=['GET'])
+def api_info():
+    """서버 정보 API"""
+    return jsonify({
+        'service': 'IoT Central Server',
+        'status': 'running',
+        'sensor_available': SENSOR_AVAILABLE,
+        'version': '1.0.0'
+    }), 200
 
 if __name__ == '__main__':
     print("=" * 60, flush=True)

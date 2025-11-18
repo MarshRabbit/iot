@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IoT 중앙 관리 시스템</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🏠 IoT 중앙 관리 시스템</h1>
+            <div class="status">
+                <span id="server-status" class="status-indicator">●</span>
+                <span id="last-update">마지막 업데이트: -</span>
+            </div>
+        </header>
+
+        <!-- 센서 데이터 카드 -->
+        <div class="sensor-grid">
+            <!-- 온도 -->
+            <div class="sensor-card">
+                <div class="sensor-icon">🌡️</div>
+                <h3>온도</h3>
+                <div class="sensor-value" id="temperature">--</div>
+                <div class="sensor-unit">°C</div>
+            </div>
+
+            <!-- CO2 -->
+            <div class="sensor-card" id="co2-card">
+                <div class="sensor-icon">💨</div>
+                <h3>CO2</h3>
+                <div class="sensor-value" id="co2">--</div>
+                <div class="sensor-unit">ppm</div>
+            </div>
+
+            <!-- 소음 -->
+            <div class="sensor-card" id="noise-card">
+                <div class="sensor-icon">🔊</div>
+                <h3>소음</h3>
+                <div class="sensor-value" id="noise">--</div>
+                <div class="sensor-unit">dB</div>
+            </div>
+
+            <!-- 졸음 감지 -->
+            <div class="sensor-card" id="drowsy-card">
+                <div class="sensor-icon">😴</div>
+                <h3>졸음 감지</h3>
+                <div class="sensor-value" id="drowsy-status">대기 중</div>
+                <div class="sensor-unit" id="drowsy-time">-</div>
+            </div>
+
+            <!-- 에어컨 -->
+            <div class="actuator-card" id="ac-card">
+                <div class="actuator-icon">❄️</div>
+                <h3>에어컨</h3>
+                <div class="actuator-status" id="ac-status">OFF</div>
+            </div>
+
+            <!-- 히터 -->
+            <div class="actuator-card" id="heater-card">
+                <div class="actuator-icon">🔥</div>
+                <h3>히터</h3>
+                <div class="actuator-status" id="heater-status">OFF</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>
