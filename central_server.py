@@ -7,108 +7,8 @@ import time
 import os
 
 
-# BMP180 센서 초기화
-try:
-    from smbus2 import SMBus
-
-    class BMP180:
-        def __init__(self, address=0x77, bus=1):
-            self.bus = SMBus(bus)
-            self.address = address
-            self.load_calibration()
-
-        def load_calibration(self):
-            """BMP180 캘리브레이션 데이터 읽기"""
-            self.AC1 = self.read_int16(0xAA)
-            self.AC2 = self.read_int16(0xAC)
-            self.AC3 = self.read_int16(0xAE)
-            self.AC4 = self.read_uint16(0xB0)
-            self.AC5 = self.read_uint16(0xB2)
-            self.AC6 = self.read_uint16(0xB4)
-            self.B1 = self.read_int16(0xB6)
-            self.B2 = self.read_int16(0xB8)
-            self.MB = self.read_int16(0xBA)
-            self.MC = self.read_int16(0xBC)
-            self.MD = self.read_int16(0xBE)
-
-        def read_int16(self, register):
-            """16비트 signed int 읽기"""
-            data = self.bus.read_i2c_block_data(self.address, register, 2)
-            value = (data[0] << 8) + data[1]
-            if value >= 0x8000:
-                value = -((65535 - value) + 1)
-            return value
-
-        def read_uint16(self, register):
-            """16비트 unsigned int 읽기"""
-            data = self.bus.read_i2c_block_data(self.address, register, 2)
-            return (data[0] << 8) + data[1]
-
-        def read_raw_temp(self):
-            """원시 온도 데이터 읽기"""
-            self.bus.write_byte_data(self.address, 0xF4, 0x2E)
-            time.sleep(0.05)
-            data = self.bus.read_i2c_block_data(self.address, 0xF6, 2)
-            return (data[0] << 8) + data[1]
-
-        def read_raw_pressure(self):
-            """원시 기압 데이터 읽기"""
-            self.bus.write_byte_data(self.address, 0xF4, 0x34 + (3 << 6))
-            time.sleep(0.06)
-            data = self.bus.read_i2c_block_data(self.address, 0xF6, 3)
-            return ((data[0] << 16) + (data[1] << 8) + data[2]) >> (8 - 3)
-
-        def read_temperature(self):
-            """온도 읽기 (°C)"""
-            UT = self.read_raw_temp()
-            X1 = ((UT - self.AC6) * self.AC5) >> 15
-            X2 = (self.MC << 11) // (X1 + self.MD)
-            B5 = X1 + X2
-            temp = ((B5 + 8) >> 4) / 10.0
-            return temp
-
-        def read_pressure(self):
-            """기압 읽기 (Pa)"""
-            UT = self.read_raw_temp()
-            UP = self.read_raw_pressure()
-
-            X1 = ((UT - self.AC6) * self.AC5) >> 15
-            X2 = (self.MC << 11) // (X1 + self.MD)
-            B5 = X1 + X2
-
-            B6 = B5 - 4000
-            X1 = (self.B2 * ((B6 * B6) >> 12)) >> 11
-            X2 = (self.AC2 * B6) >> 11
-            X3 = X1 + X2
-            B3 = (((self.AC1 * 4 + X3) << 3) + 2) // 4
-            X1 = (self.AC3 * B6) >> 13
-            X2 = (self.B1 * ((B6 * B6) >> 12)) >> 16
-            X3 = ((X1 + X2) + 2) >> 2
-            B4 = (self.AC4 * (X3 + 32768)) >> 15
-            B7 = (UP - B3) * (50000 >> 3)
-
-            if B7 < 0x80000000:
-                p = (B7 * 2) // B4
-            else:
-                p = (B7 // B4) * 2
-
-            X1 = (p >> 8) * (p >> 8)
-            X1 = (X1 * 3038) >> 16
-            X2 = (-7357 * p) >> 16
-            p = p + ((X1 + X2 + 3791) >> 4)
-
-            return p
-
-    bmp_sensor = BMP180()
-    SENSOR_AVAILABLE = True
-    print("✓ BMP180 sensor initialized (smbus2)", flush=True)
-
-except Exception as e:
-    print(f"⚠️  BMP180 sensor not available: {e}", flush=True)
-    print("   Running in server-only mode", flush=True)
-    bmp_sensor = None
-    SENSOR_AVAILABLE = False
-
+# BMP180 sensor is removed, as this server will now receive data from other sensors.
+SENSOR_AVAILABLE = False
 app = Flask(__name__)
 
 DB_PATH = '/app/data/iot_system.db'
@@ -206,33 +106,34 @@ def save_control_log(device, action, reason):
     except Exception as e:
         print(f"[DB ERROR] {e}", flush=True)
 
-def bmp180_reading_loop():
-    """BMP180 센서를 주기적으로 읽어서 데이터 업데이트"""
-    if not SENSOR_AVAILABLE:
-        print("[BMP180] Sensor not available, skipping reading loop", flush=True)
-        return
-    
-    print("[BMP180] Starting sensor reading loop...", flush=True)
-    
-    while True:
-        try:
-            temperature = bmp_sensor.read_temperature()
-            pressure = bmp_sensor.read_pressure() / 100.0
-            
-            latest_sensor_data['temperature'] = temperature
-            latest_sensor_data['pressure'] = pressure
-            
-            save_sensor_data('temperature', temperature, '°C')
-            save_sensor_data('pressure', pressure, 'hPa')
-            
-            print(f"[BMP180] Temp: {temperature:.1f}°C, Pressure: {pressure:.1f}hPa", flush=True)
-            
-        except Exception as e:
-            print(f"[BMP180 ERROR] {e}", flush=True)
-        
-        time.sleep(10)
+
 
 # API 엔드포인트들 (동일)
+@app.route('/sensor/environment', methods=['POST'])
+def receive_environment():
+    data = request.json
+    temperature = data.get('temperature')
+    pressure = data.get('pressure')
+    humidity = data.get('humidity')
+
+    if temperature is not None:
+        latest_sensor_data['temperature'] = temperature
+        save_sensor_data('temperature', temperature, '°C')
+        print(f"[ENV] Received Temperature: {temperature}°C", flush=True)
+
+    if pressure is not None:
+        latest_sensor_data['pressure'] = pressure
+        save_sensor_data('pressure', pressure, 'hPa')
+        print(f"[ENV] Received Pressure: {pressure}hPa", flush=True)
+
+    if humidity is not None:
+        latest_sensor_data['humidity'] = humidity
+        save_sensor_data('humidity', humidity, '%')
+        print(f"[ENV] Received Humidity: {humidity}%", flush=True)
+
+    return jsonify({'status': 'success'}), 200
+
+
 @app.route('/sensor/co2', methods=['POST'])
 def receive_co2():
     data = request.json
@@ -290,16 +191,7 @@ def receive_noise():
     print(f"[NOISE] Level: {noise_level} dB, Duration: {duration}s", flush=True)
     return jsonify({'status': 'success'}), 200
 
-@app.route('/sensor/humidity', methods=['POST'])
-def receive_humidity():
-    data = request.json
-    humidity = data.get('humidity')
-    
-    latest_sensor_data['humidity'] = humidity
-    save_sensor_data('humidity', humidity, '%')
-    
-    print(f"[HUMIDITY] Received: {humidity}%", flush=True)
-    return jsonify({'status': 'success'}), 200
+
 
 def control_device(device, action, reason):
     """액추에이터 제어 명령 전송"""
@@ -547,12 +439,6 @@ if __name__ == '__main__':
     
     init_db()
     
-    bmp_thread = threading.Thread(target=bmp180_reading_loop, daemon=True)
-    bmp_thread.start()
-    print("✓ BMP180 sensor thread started", flush=True)
-    
-    decision_thread = threading.Thread(target=decision_making_loop, daemon=True)
-    decision_thread.start()
     print("✓ Decision making thread started", flush=True)
     
     print("=" * 60, flush=True)
