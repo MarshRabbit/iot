@@ -236,7 +236,7 @@ def bmp180_reading_loop():
 @app.route('/sensor/co2', methods=['POST'])
 def receive_co2():
     data = request.json
-    co2_level = data.get('co2_level')
+    co2_level = float(data.get('co2_level'))
     
     latest_sensor_data['co2_level'] = co2_level
     save_sensor_data('co2', co2_level, 'ppm')

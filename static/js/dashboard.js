@@ -1,5 +1,5 @@
 // 서버 주소
-const SERVER_URL = 'http://192.168.0.146:5000';
+const SERVER_URL = 'http://172.16.143.187:5000';
 
 // 졸음 감지를 위한 변수 (움직임이 없는 시간)
 const DROWSY_TIMEOUT = 300; // 5분 (300초)
@@ -24,7 +24,8 @@ async function fetchSensorData() {
         // 2. CO2
         const co2Card = document.getElementById('co2-card');
         if (sensors.co2_level !== null) {
-            const co2Value = sensors.co2_level.toFixed(0);
+	    const co2Num = Number(sensors.co2_level);
+            const co2Value = co2Num.toFixed(0);
             document.getElementById('co2').textContent = co2Value;
             
             // 임계값 초과 시 경고
