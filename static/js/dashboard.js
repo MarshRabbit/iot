@@ -1,5 +1,5 @@
 // 서버 주소
-const SERVER_URL = 'http://172.16.143.187:5000';
+const SERVER_URL = 'http://192.168.168.187:5000';
 
 // 졸음 감지를 위한 변수 (움직임이 없는 시간)
 const DROWSY_TIMEOUT = 300; // 5분 (300초)
@@ -91,9 +91,40 @@ async function fetchSensorData() {
             drowsyTime.textContent = '-';
             drowsyCard.classList.remove('drowsy', 'alert');
         }
-        
-        // 제어 로그에서 액추에이터 상태 확인
-        updateActuatorStatus();
+
+        // 5. LED 상태 기반 에어컨/히터 상태 업데이트
+        const ledState = sensors.led_state;
+        const acCard = document.getElementById('ac-card');
+        const acStatusElement = document.getElementById('ac-status');
+        const heaterCard = document.getElementById('heater-card');
+        const heaterStatusElement = document.getElementById('heater-status');
+
+        let acStatus = 'OFF';
+        let heaterStatus = 'OFF';
+
+        if (ledState === 'BLUE') {
+            acStatus = 'ON';
+            heaterStatus = 'OFF';
+        } else if (ledState === 'RED') {
+            acStatus = 'OFF';
+            heaterStatus = 'ON';
+        }
+
+        // 에어컨 상태 업데이트
+        acStatusElement.textContent = acStatus;
+        if (acStatus === 'ON') {
+            acCard.classList.add('on');
+        } else {
+            acCard.classList.remove('on');
+        }
+
+        // 히터 상태 업데이트
+        heaterStatusElement.textContent = heaterStatus;
+        if (heaterStatus === 'ON') {
+            heaterCard.classList.add('on');
+        } else {
+            heaterCard.classList.remove('on');
+        }
         
         // 마지막 업데이트 시간
         document.getElementById('last-update').textContent = 
@@ -105,63 +136,6 @@ async function fetchSensorData() {
     } catch (error) {
         console.error('데이터 가져오기 실패:', error);
         document.getElementById('server-status').style.color = '#ff4444';
-    }
-}
-
-// 액추에이터 상태 업데이트
-async function updateActuatorStatus() {
-    try {
-        const response = await fetch(`${SERVER_URL}/logs/control?limit=20`);
-        const data = await response.json();
-        
-        // 에어컨과 히터의 최신 상태 찾기
-        let acStatus = 'OFF';
-        let heaterStatus = 'OFF';
-        
-        if (data.logs && data.logs.length > 0) {
-            // 최근 로그에서 각 장치의 최신 상태 찾기
-            for (let log of data.logs) {
-                const device = log[2]; // device
-                const action = log[3]; // action
-                
-                if (device === 'airconditioner' && acStatus === 'OFF') {
-                    acStatus = action;
-                }
-                if (device === 'heater' && heaterStatus === 'OFF') {
-                    heaterStatus = action;
-                }
-                
-                // 둘 다 찾았으면 중단
-                if (acStatus !== 'OFF' && heaterStatus !== 'OFF') {
-                    break;
-                }
-            }
-        }
-        
-        // 5. 에어컨 상태
-        const acCard = document.getElementById('ac-card');
-        const acStatusElement = document.getElementById('ac-status');
-        acStatusElement.textContent = acStatus;
-        
-        if (acStatus === 'ON') {
-            acCard.classList.add('on');
-        } else {
-            acCard.classList.remove('on');
-        }
-        
-        // 6. 히터 상태
-        const heaterCard = document.getElementById('heater-card');
-        const heaterStatusElement = document.getElementById('heater-status');
-        heaterStatusElement.textContent = heaterStatus;
-        
-        if (heaterStatus === 'ON') {
-            heaterCard.classList.add('on');
-        } else {
-            heaterCard.classList.remove('on');
-        }
-        
-    } catch (error) {
-        console.error('액추에이터 상태 가져오기 실패:', error);
     }
 }
 

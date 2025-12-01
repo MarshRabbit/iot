@@ -20,28 +20,35 @@ latest_sensor_data = {
     'co2_level': None,
     'motion_detected': False,
     'motion_timestamp': None,
+    'is_drowsy_alert': False,
+    'idle_duration': 0.0,
     'noise_level': None,
-    'noise_timestamp': None
+    'noise_timestamp': None,
+    'led_state': 'OFF' # LED 상태 추가
 }
 
-# 액추에이터 엔드포인트 (서보 추가)
+# 액추에이터 엔드포인트 (모터 추가)
 ACTUATOR_ENDPOINTS = {
     'airconditioner': os.getenv('AC_ENDPOINT', 'http://192.168.0.101:5001/control'),
     'heater': os.getenv('HEATER_ENDPOINT', 'http://192.168.0.102:5001/control'),
     'ventilator': os.getenv('VENT_ENDPOINT', 'http://192.168.0.103:5001/control'),
     'light': os.getenv('LIGHT_ENDPOINT', 'http://192.168.0.104:5001/control'),
     'alarm': os.getenv('ALARM_ENDPOINT', 'http://192.168.0.105:5001/control'),
-    'servo': os.getenv('SERVO_ENDPOINT', 'http://192.168.0.146:5001/control')  # 로컬 서보
+    'led': os.getenv('LED_ENDPOINT', 'http://led-controller:5002/control'),
+    'motor': os.getenv('MOTOR_ENDPOINT', 'http://motor-controller:5003/control')
 }
 
 THRESHOLDS = {
-    'temp_high': float(os.getenv('TEMP_HIGH', '25.0')),
+    'temp_high': float(os.getenv('TEMP_HIGH', '28.0')),
     'temp_low': float(os.getenv('TEMP_LOW', '18.0')),
     'humidity_high': float(os.getenv('HUMIDITY_HIGH', '70.0')),
     'co2_high': float(os.getenv('CO2_HIGH', '1000.0')),
     'noise_high': float(os.getenv('NOISE_HIGH', '70.0')),
     'motion_timeout': int(os.getenv('MOTION_TIMEOUT', '300'))
 }
+
+co2_high_start_time = None
+co2_normal_start_time = None
 
 def init_db():
     """데이터베이스 초기화"""
@@ -61,7 +68,8 @@ def init_db():
                  (id INTEGER PRIMARY KEY AUTOINCREMENT,
                   timestamp TEXT,
                   detected BOOLEAN,
-                  image_path TEXT)''')
+                  is_drowsy_alert BOOLEAN,
+                  idle_duration REAL)''')
     
     c.execute('''CREATE TABLE IF NOT EXISTS noise_log
                  (id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -149,23 +157,27 @@ def receive_co2():
 def receive_motion():
     data = request.json
     motion_detected = data.get('motion_detected', False)
-    image_path = data.get('image_path', None)
+    is_drowsy_alert = data.get('is_drowsy_alert', False)
+    idle_duration = data.get('idle_duration', 0)
     
+    # Update latest sensor data cache
     latest_sensor_data['motion_detected'] = motion_detected
+    latest_sensor_data['is_drowsy_alert'] = is_drowsy_alert
+    latest_sensor_data['idle_duration'] = idle_duration
     latest_sensor_data['motion_timestamp'] = datetime.now().isoformat()
     
     try:
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
-        c.execute('''INSERT INTO motion_log (timestamp, detected, image_path)
-                     VALUES (?, ?, ?)''',
-                  (datetime.now().isoformat(), motion_detected, image_path))
+        c.execute('''INSERT INTO motion_log (timestamp, detected, is_drowsy_alert, idle_duration)
+                     VALUES (?, ?, ?, ?)''',
+                  (datetime.now().isoformat(), motion_detected, is_drowsy_alert, idle_duration))
         conn.commit()
         conn.close()
     except Exception as e:
         print(f"[DB ERROR] {e}", flush=True)
     
-    print(f"[MOTION] Detected: {motion_detected}, Image: {image_path}", flush=True)
+    print(f"[MOTION] Detected: {motion_detected}, Drowsy Alert: {is_drowsy_alert}, Idle: {idle_duration}s", flush=True)
     return jsonify({'status': 'success'}), 200
 
 @app.route('/sensor/noise', methods=['POST'])
@@ -220,8 +232,35 @@ def control_device(device, action, reason):
         print(f"[ERROR] Failed to control {device}: {e}", flush=True)
         return False
 
+def control_led(color, reason):
+    """LED 제어를 위해 led_controller에 HTTP 요청을 전송"""
+    global latest_sensor_data
+    
+    if latest_sensor_data['led_state'] == color:
+        return False # 상태 변경이 없으면 요청 안함
+        
+    try:
+        response = requests.post(
+            ACTUATOR_ENDPOINTS['led'],
+            json={'color': color},
+            timeout=5
+        )
+        if response.status_code == 200:
+            latest_sensor_data['led_state'] = color
+            print(f"[LED CONTROL] LED set to {color} (Reason: {reason})", flush=True)
+            save_control_log('led', color, reason)
+            return True
+        else:
+            print(f"[LED ERROR] Failed to set LED color. Status: {response.status_code}", flush=True)
+            return False
+            
+    except requests.exceptions.RequestException as e:
+        print(f"[LED ERROR] Cannot connect to led-controller: {e}", flush=True)
+        return False
+
 def decision_making_loop():
     """주기적으로 센서 데이터를 분석하고 제어 결정"""
+    global co2_high_start_time, co2_normal_start_time
     print("[DECISION] Starting decision making loop...", flush=True)
     
     previous_state = {
@@ -230,7 +269,8 @@ def decision_making_loop():
         'ventilator': None,
         'light': None,
         'alarm': None,
-        'servo': None
+        'motor': None,
+        'led': None
     }
     
     while True:
@@ -246,103 +286,104 @@ def decision_making_loop():
             if temp is not None:
                 if temp > THRESHOLDS['temp_high']:
                     if previous_state['airconditioner'] != 'ON':
-                        control_device('airconditioner', 'ON',
-                                     f'Temperature too high: {temp:.1f}°C')
+                        control_device('airconditioner', 'ON', f'Temperature too high: {temp:.1f}°C')
                         previous_state['airconditioner'] = 'ON'
-                    
                     if previous_state['heater'] != 'OFF':
-                        control_device('heater', 'OFF',
-                                     f'Temperature too high: {temp:.1f}°C')
+                        control_device('heater', 'OFF', f'Temperature too high: {temp:.1f}°C')
                         previous_state['heater'] = 'OFF'
-                    
                 elif temp < THRESHOLDS['temp_low']:
                     if previous_state['heater'] != 'ON':
-                        control_device('heater', 'ON',
-                                     f'Temperature too low: {temp:.1f}°C')
+                        control_device('heater', 'ON', f'Temperature too low: {temp:.1f}°C')
                         previous_state['heater'] = 'ON'
-                    
                     if previous_state['airconditioner'] != 'OFF':
-                        control_device('airconditioner', 'OFF',
-                                     f'Temperature too low: {temp:.1f}°C')
+                        control_device('airconditioner', 'OFF', f'Temperature too low: {temp:.1f}°C')
                         previous_state['airconditioner'] = 'OFF'
                 else:
                     if previous_state['airconditioner'] != 'OFF':
-                        control_device('airconditioner', 'OFF',
-                                     f'Temperature normal: {temp:.1f}°C')
+                        control_device('airconditioner', 'OFF', f'Temperature normal: {temp:.1f}°C')
                         previous_state['airconditioner'] = 'OFF'
-                    
                     if previous_state['heater'] != 'OFF':
-                        control_device('heater', 'OFF',
-                                     f'Temperature normal: {temp:.1f}°C')
+                        control_device('heater', 'OFF', f'Temperature normal: {temp:.1f}°C')
                         previous_state['heater'] = 'OFF'
-            
-            # 2. CO2 기반 환기 제어 + 서보 모터 (HTTP 요청으로 변경)
+
+            # 2. CO2 기반 환기 및 모터 제어 (5초 지연)
             if co2 is not None:
                 if co2 > THRESHOLDS['co2_high']:
-                    # 환풍기 ON
-                    if previous_state['ventilator'] != 'ON':
-                        control_device('ventilator', 'ON', 
-                                     f'CO2 level too high: {co2:.0f} ppm')
-                        previous_state['ventilator'] = 'ON'
+                    co2_normal_start_time = None
+                    if co2_high_start_time is None:
+                        co2_high_start_time = time.time()
                     
-                    # 서보 모터 - 창문 열기 (HTTP 요청)
-                    if previous_state['servo'] != 'OPEN':
-                        print(f"[CO2] CO2 level high ({co2:.0f} ppm) - Opening window", flush=True)
-                        control_device('servo', 'open', f'CO2 level too high: {co2:.0f} ppm')
-                        previous_state['servo'] = 'OPEN'
-                
+                    if (time.time() - co2_high_start_time) >= 5:
+                        if previous_state['ventilator'] != 'ON':
+                            control_device('ventilator', 'ON', f'CO2 high for >=5s: {co2:.0f} ppm')
+                            previous_state['ventilator'] = 'ON'
+                        if previous_state['motor'] != 'open':
+                            control_device('motor', 'open', f'CO2 high for >=5s: {co2:.0f} ppm')
+                            previous_state['motor'] = 'open'
                 else:
-                    # 환풍기 OFF
-                    if previous_state['ventilator'] != 'OFF':
-                        control_device('ventilator', 'OFF', 
-                                     f'CO2 level normal: {co2:.0f} ppm')
-                        previous_state['ventilator'] = 'OFF'
-                    
-                    # 서보 모터 - 창문 닫기 (HTTP 요청)
-                    if previous_state['servo'] != 'CLOSE':
-                        print(f"[CO2] CO2 level normal ({co2:.0f} ppm) - Closing window", flush=True)
-                        control_device('servo', 'close', f'CO2 level normal: {co2:.0f} ppm')
-                        previous_state['servo'] = 'CLOSE'
-            
-            # 3. 습도가 너무 높을 경우
+                    co2_high_start_time = None
+                    if co2_normal_start_time is None:
+                        co2_normal_start_time = time.time()
+
+                    if (time.time() - co2_normal_start_time) >= 5:
+                        if previous_state['ventilator'] != 'OFF':
+                            control_device('ventilator', 'OFF', f'CO2 normal for >=5s: {co2:.0f} ppm')
+                            previous_state['ventilator'] = 'OFF'
+                        if previous_state['motor'] != 'close':
+                            control_device('motor', 'close', f'CO2 normal for >=5s: {co2:.0f} ppm')
+                            previous_state['motor'] = 'close'
+
+            # 3. 습도 기반 환기 제어
             if humidity is not None and humidity > THRESHOLDS['humidity_high']:
                 if previous_state['ventilator'] != 'ON':
-                    control_device('ventilator', 'ON',
-                                 f'Humidity too high: {humidity:.1f}%')
+                    control_device('ventilator', 'ON', f'Humidity too high: {humidity:.1f}%')
                     previous_state['ventilator'] = 'ON'
-            
-            # 4. 움직임 감지 - 조명 제어
+
+            # 4. 움직임 감지 조명 제어
             if motion:
                 if previous_state['light'] != 'ON':
                     control_device('light', 'ON', 'Motion detected')
                     previous_state['light'] = 'ON'
-            else:
-                if motion_time:
-                    try:
-                        last_motion = datetime.fromisoformat(motion_time)
-                        time_since_motion = (datetime.now() - last_motion).total_seconds()
-                        
-                        if time_since_motion > THRESHOLDS['motion_timeout']:
-                            if previous_state['light'] != 'OFF':
-                                control_device('light', 'OFF',
-                                             f'No motion for {time_since_motion:.0f}s')
-                                previous_state['light'] = 'OFF'
-                    except:
-                        pass
-            
-            # 5. 소음 감지 - 경고 알람
+            elif motion_time:
+                try:
+                    last_motion = datetime.fromisoformat(motion_time)
+                    if (datetime.now() - last_motion).total_seconds() > THRESHOLDS['motion_timeout']:
+                        if previous_state['light'] != 'OFF':
+                            control_device('light', 'OFF', f'No motion for {THRESHOLDS["motion_timeout"]}s')
+                            previous_state['light'] = 'OFF'
+                except Exception:
+                    pass
+
+            # 5. 소음 기반 알람 제어
             if noise is not None:
                 if noise > THRESHOLDS['noise_high']:
                     if previous_state['alarm'] != 'ON':
-                        control_device('alarm', 'ON',
-                                     f'Noise level too high: {noise:.0f} dB')
+                        control_device('alarm', 'ON', f'Noise level too high: {noise:.0f} dB')
                         previous_state['alarm'] = 'ON'
                 else:
                     if previous_state['alarm'] != 'OFF':
-                        control_device('alarm', 'OFF',
-                                     f'Noise level normal: {noise:.0f} dB')
+                        control_device('alarm', 'OFF', f'Noise level normal: {noise:.0f} dB')
                         previous_state['alarm'] = 'OFF'
-        
+
+            # 6. LED 상태 결정 로직 (우선순위 기반)
+            desired_led_color = 'OFF'
+            led_reason = 'All systems normal'
+            
+            if temp is not None:
+                if temp > THRESHOLDS['temp_high']:
+                    desired_led_color = 'BLUE'
+                    led_reason = f'Temperature too high: {temp:.1f}°C'
+                elif temp < THRESHOLDS['temp_low']:
+                    desired_led_color = 'RED'
+                    led_reason = f'Temperature too low: {temp:.1f}°C'
+                elif noise is not None and noise > THRESHOLDS['noise_high']:
+                    desired_led_color = 'GREEN'
+                    led_reason = f'Noise level too high: {noise:.0f} dB'
+            
+            if previous_state['led'] != desired_led_color:
+                control_led(desired_led_color, led_reason)
+                previous_state['led'] = desired_led_color
+
         except Exception as e:
             print(f"[DECISION ERROR] {e}", flush=True)
             import traceback
@@ -439,8 +480,10 @@ if __name__ == '__main__':
     
     init_db()
     
+    decision_thread = threading.Thread(target=decision_making_loop)
+    decision_thread.start()
     print("✓ Decision making thread started", flush=True)
-    
+        
     print("=" * 60, flush=True)
     print("        Server ready on http://0.0.0.0:5000", flush=True)
     print("=" * 60, flush=True)

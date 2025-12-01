@@ -5,6 +5,7 @@ services:
     build: .
     container_name: iot_central_server
     restart: unless-stopped
+    command: python central_server.py
     
     # 특권 모드 (I2C 센서 접근을 위해 필요)
     privileged: true
@@ -42,7 +43,9 @@ services:
       - VENT_ENDPOINT=http://192.168.0.103:5001/control
       - LIGHT_ENDPOINT=http://192.168.0.104:5001/control
       - ALARM_ENDPOINT=http://192.168.0.105:5001/control
-    
+      - LED_ENDPOINT=http://led-controller:5002/control # LED 컨트롤러 서비스 엔드포인트
+      - MOTOR_ENDPOINT=http://motor-controller:5003/control # 모터 컨트롤러 서비스 엔드포인트
+
     # 헬스체크
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:5000/health || exit 1"]
@@ -53,3 +56,34 @@ services:
     
     env_file:
       - .env
+
+  led-controller:
+    build: .
+    container_name: led_controller
+    command: python led_control_server.py
+    restart: unless-stopped
+    privileged: true # GPIO 접근을 위해 필요
+    ports:
+      - "5002:5002"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5002/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  motor-controller:
+    build: .
+    container_name: motor_controller
+    command: python motor_control_server.py
+    restart: unless-stopped
+    privileged: true # GPIO 접근을 위해 필요
+    ports:
+      - "5003:5003"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5003/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+

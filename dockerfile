@@ -19,6 +19,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 애플리케이션 코드 복사
 COPY central_server.py .
 COPY pwm_servo.py .
+COPY app/led_control_server.py .
+COPY app/motor_control_server.py .
 COPY templates/ ./templates/
 COPY static/ ./static
 
